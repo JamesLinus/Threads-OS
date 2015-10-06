@@ -17,6 +17,27 @@ bool sema_try_down (struct semaphore *);
 void sema_up (struct semaphore *);
 void sema_self_test (void);
 
+/* Compare wakeup_tick of two semaphores */
+bool
+wakeup_tick_less(const struct list_elem *a,
+                 const struct list_elem *b,
+                 void *aux);
+
+/* Compare priorities of two threads */
+bool
+higher_priority(const struct list_elem *a,
+                const struct list_elem *b,
+                void *aux);
+
+/*Struct to store threads down waiting for wakeup_tick to reach*/
+struct block_sema
+{
+  struct list_elem elem;
+  int64_t wakeup_tick;		/* wake me up when this tick occurs */
+  struct semaphore sema;  	/* semaphore to signal the thread to 
+                             wake up at wakeup_tick */
+};
+
 /* Lock. */
 struct lock 
   {
