@@ -29,6 +29,12 @@ higher_priority(const struct list_elem *a,
                 const struct list_elem *b,
                 void *aux);
 
+/* Compare priorities of two threads */
+bool
+cond_higher_priority(const struct list_elem *a,
+                     const struct list_elem *b,
+                     void *aux);
+
 /*Struct to store threads down waiting for wakeup_tick to reach*/
 struct block_sema
 {
