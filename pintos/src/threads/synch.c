@@ -227,9 +227,28 @@ lock_acquire (struct lock *lock)
   ASSERT (lock != NULL);
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
-
+  
+  if (lock->holder != NULL)
+  {
+    if (lock->holder->priority < thread_current()->priority)
+    {
+      priority_donate(lock);
+    }
+  }
   sema_down (&lock->semaphore);
   lock->holder = thread_current ();
+}
+
+/*Donate priority to thread holding the lock with lower priority*/
+void
+priority_donate (struct lock *lock)
+{
+  struct thread *t = lock->holder;
+  t->flag_donation_received = 1;
+  t->priority = thread_current()->priority;
+  //t->intermediate_priority[list_size(&t->donation_received_from_threads)] = thread_current()->priority;
+  //list_push_back (&t->donation_received_from_threads, &thread_current ()->elem);
+  //list_push_back (&thread_current ()->donated_to_threads, &t->elem);
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -262,7 +281,13 @@ lock_release (struct lock *lock)
 {
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
-
+  if (lock->holder->flag_donation_received == 1) 
+  {
+    lock->holder->priority = lock->holder->base_priority;
+    lock->holder->flag_donation_received = 0;
+    //struct thread *t = list_entry(list_pop_back (&lock->holder->donation_received_from_threads),struct thread, elem);
+    //list_pop_back (&t->donated_to_threads);
+  }
   lock->holder = NULL;
   sema_up (&lock->semaphore);
 }

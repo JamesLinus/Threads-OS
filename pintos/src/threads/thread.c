@@ -92,7 +92,7 @@ thread_init (void)
   lock_init (&tid_lock);
   list_init (&ready_list);
   list_init (&all_list);
-
+  
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
   init_thread (initial_thread, "main", PRI_DEFAULT);
@@ -481,6 +481,14 @@ init_thread (struct thread *t, const char *name, int priority)
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
+  
+  /*Priority Scheduler*/
+  t->base_priority = priority;
+  t->flag_donation_received = 0;
+  
+  list_init (&t->donated_to_threads);
+  list_init (&t->donation_received_from_threads);
+  
   t->magic = THREAD_MAGIC;
   list_push_back (&all_list, &t->allelem);
 }
@@ -509,7 +517,10 @@ next_thread_to_run (void)
   if (list_empty (&ready_list))
     return idle_thread;
   else
+  {
+    list_sort(&ready_list, higher_priority, NULL);
     return list_entry (list_pop_front (&ready_list), struct thread, elem);
+  }
 }
 
 /* Completes a thread switch by activating the new thread's page
