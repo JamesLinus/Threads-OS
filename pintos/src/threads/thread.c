@@ -351,12 +351,36 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
-  thread_current ()->priority = new_priority;
+  struct thread *t = thread_current();
+  //enum intr_level old_level = intr_disable ();
+  if (t->flag_donation_received == 1)
+  {
+    if (new_priority > t->priority)
+    {
+      t->base_priority = new_priority;
+      t->priority = new_priority;      
+    }
+    
+    else
+    {
+      t->base_priority = new_priority;    
+    }
+  }
+  
+  else
+  {
+    t->base_priority = new_priority;
+    t->priority = new_priority;
+  }
+  
+
+  
   if (!list_empty (&ready_list))
   {
-    if (new_priority < (list_entry(list_front(&ready_list), struct thread, elem))->priority)
+    if (t->priority < (list_entry(list_front(&ready_list), struct thread, elem))->priority)
       thread_yield();
-  }  
+  } 
+  //intr_set_level (old_level);
 }
 
 /* Returns the current thread's priority. */
@@ -487,7 +511,8 @@ init_thread (struct thread *t, const char *name, int priority)
   t->flag_donation_received = 0;
   
   list_init (&t->donated_to_threads);
-  list_init (&t->donation_received_from_threads);
+  //list_init (&t->donation_received_from_threads);
+  list_init (&t->donation_received_from);
   
   t->magic = THREAD_MAGIC;
   list_push_back (&all_list, &t->allelem);
@@ -518,7 +543,7 @@ next_thread_to_run (void)
     return idle_thread;
   else
   {
-    list_sort(&ready_list, higher_priority, NULL);
+    //list_sort(&ready_list, higher_priority, NULL);
     return list_entry (list_pop_front (&ready_list), struct thread, elem);
   }
 }

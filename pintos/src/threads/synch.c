@@ -228,24 +228,36 @@ lock_acquire (struct lock *lock)
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
   
+  enum intr_level old_level = intr_disable ();
+  
   if (lock->holder != NULL)
   {
     if (lock->holder->priority < thread_current()->priority)
     {
-      priority_donate(lock);
+      struct donation d;
+      d.dlock = lock;
+      d.dpriority = thread_current()->priority;
+      d.dthread = thread_current();
+      
+      //lock->holder->plock = lock;
+      priority_donate(lock->holder, &d);
     }
   }
+  
   sema_down (&lock->semaphore);
   lock->holder = thread_current ();
+  intr_set_level (old_level);
 }
 
 /*Donate priority to thread holding the lock with lower priority*/
 void
-priority_donate (struct lock *lock)
+priority_donate (struct thread *t, struct donation *d)
 {
-  struct thread *t = lock->holder;
   t->flag_donation_received = 1;
   t->priority = thread_current()->priority;
+  list_push_back (&t->donation_received_from, &d->delem);
+  list_push_back (&thread_current ()->donated_to_threads, &t->delem);
+  
   //t->intermediate_priority[list_size(&t->donation_received_from_threads)] = thread_current()->priority;
   //list_push_back (&t->donation_received_from_threads, &thread_current ()->elem);
   //list_push_back (&thread_current ()->donated_to_threads, &t->elem);
@@ -281,12 +293,39 @@ lock_release (struct lock *lock)
 {
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
-  if (lock->holder->flag_donation_received == 1) 
+
+  if (lock->holder->flag_donation_received == 1)
   {
-    lock->holder->priority = lock->holder->base_priority;
-    lock->holder->flag_donation_received = 0;
+    enum intr_level old_level = intr_disable ();
+    struct list_elem *e;
+    struct donation *check;
+    
+    for (e=list_begin (&lock->holder->donation_received_from); e != list_end (&lock->holder->donation_received_from); e = list_next (e) )
+    {
+      
+      check = list_entry (e, struct donation, delem);
+      
+      if (check->dlock == lock)
+      {
+        list_remove(&check->delem);
+        //list_remove(&lock->holder->delem);
+        /*Need to remove lock->holder from donated_to_threads of all threads in waiters list for lock*/
+      }
+    }
+    
+    if (list_empty(&lock->holder->donation_received_from))
+    {
+      lock->holder->priority = lock->holder->base_priority;
+      lock->holder->flag_donation_received = 0;
+    }
+    else
+    {
+      check = list_entry (list_back(&lock->holder->donation_received_from), struct donation, delem);
+      lock->holder->priority = check->dpriority;
+    }
     //struct thread *t = list_entry(list_pop_back (&lock->holder->donation_received_from_threads),struct thread, elem);
     //list_pop_back (&t->donated_to_threads);
+    intr_set_level (old_level);
   }
   lock->holder = NULL;
   sema_up (&lock->semaphore);

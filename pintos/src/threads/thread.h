@@ -93,13 +93,18 @@ struct thread
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
     
-    /*Priority Queue*/
+    /* For donated_to list */
+    struct list_elem delem;              /* List element. */
+    
+    /*Priority Scheduling*/
     int base_priority;                  /*Priority when donation is released*/
     int intermediate_priority[8];       /*Intermediate priority when donation is received*/
     int flag_donation_received;         /*Flag is set when donation is received*/
     
     struct list donated_to_threads;              /*List of threads to which priority has been donated*/
-    struct list donation_received_from_threads;  /*List of threads from whom priority donation has been received*/
+    //struct list donation_received_from_threads;  /*List of threads from whom priority donation has been received*/
+    //struct lock *plock;                           /*Reference of lock for which priority donation has been received*/
+    struct list donation_received_from;                /*List of donations received*/
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
@@ -109,6 +114,18 @@ struct thread
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
   };
+
+/*Structure to store details donation received: thread, lock and priority */
+struct donation
+{
+  struct lock *dlock;
+  struct thread *dthread;
+  int dpriority;
+  
+  struct list_elem delem;
+};
+
+void priority_donate(struct thread *, struct donation *);
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
