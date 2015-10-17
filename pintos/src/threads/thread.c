@@ -515,9 +515,11 @@ init_thread (struct thread *t, const char *name, int priority)
   
   t->donated_to_thread = NULL;
   t->donated_for_lock = NULL;
+  t->donation_received_from = NULL;
   //list_init (&t->donated_to_threads);
   //list_init (&t->donation_received_from_threads);
-  list_init (&t->donation_received_from);
+  //list_init (&t->donation_received_from);
+  
   
   t->magic = THREAD_MAGIC;
   list_push_back (&all_list, &t->allelem);

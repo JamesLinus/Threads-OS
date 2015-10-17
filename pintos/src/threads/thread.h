@@ -105,7 +105,8 @@ struct thread
     struct lock *donated_for_lock;
     //struct list donation_received_from_threads;  /*List of threads from whom priority donation has been received*/
     //struct lock *plock;                           /*Reference of lock for which priority donation has been received*/
-    struct list donation_received_from;                /*List of donations received*/
+    //struct list donation_received_from;                /*List of donations received*/
+    struct donation *donation_received_from;
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
@@ -122,7 +123,8 @@ struct donation
   struct lock *dlock;
   int dpriority;
   
-  struct list_elem delem;
+  struct donation *next;
+  //struct list_elem delem;
 };
 
 void priority_donate(struct thread *, struct donation *, struct lock *);

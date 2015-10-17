@@ -237,6 +237,7 @@ lock_acquire (struct lock *lock)
       struct donation d;
       d.dlock = lock;
       d.dpriority = thread_current()->priority;
+      d.next = NULL;
       
       //lock->holder->plock = lock;
       priority_donate(lock->holder, &d, lock);
@@ -261,50 +262,78 @@ priority_donate (struct thread *t, struct donation *d, struct lock *lock)
 {
   //printf("Donate\n");
   struct thread *donating_thread = thread_current();
-  t->flag_donation_received = 1;
-  t->priority = donating_thread->priority;
-  list_push_back (&t->donation_received_from, &d->delem);
-  donating_thread->donated_to_thread = t;
-  donating_thread->donated_for_lock = lock;
+  int flag_donation_match = 0;
   
-  while(t->donated_to_thread != NULL)
+  //Receiving donation for first time
+  if (t->flag_donation_received != 1)
   {
-    //printf("Donation Chain\n");
-    donating_thread = t;
-    t = t->donated_to_thread;
-    
     t->flag_donation_received = 1;
     t->priority = donating_thread->priority;
-    
-    //This needs to be updated not added
-    struct list_elem *e;
-    struct donation *check;
-    for (e=list_begin (&t->donation_received_from); e != list_end (&t->donation_received_from); e = list_next (e) )
+    t->donation_received_from = d;
+    donating_thread->donated_to_thread = t;
+    donating_thread->donated_for_lock = lock;
+  }
+  //Has already received donation for some lock, check if it is the same lock, and then change donations priority
+  else
+  {
+    t->priority = donating_thread->priority;
+    struct donation *head = t->donation_received_from, *temp;
+    while(head!=NULL)
     {
-      check = list_entry (e, struct donation, delem);
-      if (check->dlock == donating_thread->donated_for_lock)
-      { 
-        int listSize = list_size(&t->donation_received_from);
-        list_remove(&check->delem);
-        if (listSize == 1)
-        {
-          list_init(&t->donation_received_from);
-        }
+      if (head->dlock == lock)
+      {
+        temp = head;
+        head = head->next;
+        temp->dpriority = donating_thread->priority;
+        temp->next = head;
+        head = temp;
+        flag_donation_match = 1;
         break;
-          
-          
-        //list_remove(&lock->holder->delem);
-        /*Need to remove lock->holder from donated_to_threads of all threads in waiters list for lock*/
       }
-    }
-    d->dlock = donating_thread->donated_for_lock;
-    list_push_back (&t->donation_received_from, &d->delem);
-    //list_push_back (&donating_thread->donated_to_threads, &t->delem);
+      else
+        head = head->next;
+    };
     
-  };
-  //t->intermediate_priority[list_size(&t->donation_received_from_threads)] = thread_current()->priority;
-  //list_push_back (&t->donation_received_from_threads, &thread_current ()->elem);
-  //list_push_back (&thread_current ()->donated_to_threads, &t->elem);
+    //If no match was found in donations received list, then add current donation
+    if (flag_donation_match == 0)
+    {
+      d->next = t->donation_received_from;
+      t->donation_received_from = d;
+      donating_thread->donated_to_thread = t;
+      donating_thread->donated_for_lock = lock;
+    }
+  }
+  
+  //Donation Chain
+  if (t->donated_to_thread!=NULL)
+  {
+    
+    while(t->donated_to_thread != NULL)
+    {
+      //printf("Donation Chain\n");
+      donating_thread = t;
+      t = t->donated_to_thread;
+      
+      t->priority = donating_thread->priority;
+      
+      struct donation *head = t->donation_received_from, *temp;
+      while(head!=NULL)
+      {
+        if (head->dlock == donating_thread->donated_for_lock)
+        {
+          temp = head;
+          head = head->next;
+          temp->dpriority = donating_thread->priority;
+          temp->next = head;
+          head = temp;
+          break;
+        }
+        else
+          head = head->next;
+      };
+      
+    };
+  }
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -342,51 +371,57 @@ lock_release (struct lock *lock)
   {
     
     enum intr_level old_level = intr_disable ();
-    struct list_elem *e;
-    struct donation *check;
-    if (!list_empty(&lock->holder->donation_received_from))
+    //struct list_elem *e;
+    struct donation *head, *temp;
+    head = lock->holder->donation_received_from;
+    
+    if (head->next == NULL && head->dlock == lock)
     {
-      int length = list_size(&lock->holder->donation_received_from);
-      for (e=list_begin (&lock->holder->donation_received_from); e != list_end (&lock->holder->donation_received_from);e = list_next (e) )
+      lock->holder->donation_received_from = NULL;
+      lock->holder->priority = lock->holder->base_priority;
+      lock->holder->flag_donation_received = 0;  
+    }
+    else
+    {
+      while (head != NULL)
       {
-        
-        check = list_entry (e, struct donation, delem);
-        
-        if (check->dlock == lock)
+        if (head->dlock == lock)
         {
-          //printf("\nLock Release %d\n", check->dpriority);
-          //printf("\nList Size %d\n",list_size(&lock->holder->donation_received_from));
-          list_remove(&check->delem);
-          if (list_empty(&lock->holder->donation_received_from))
+          //Remove donation received from
+          //temp = head;
+          //head = head->next;
+          
+          //Removing first element from list
+          if (head == lock->holder->donation_received_from)
           {
-            //printf("List empty %s\n", lock->holder->name);
-            lock->holder->priority = lock->holder->base_priority;
-            lock->holder->flag_donation_received = 0;
+            lock->holder->donation_received_from = head->next;
+            lock->holder->priority = lock->holder->donation_received_from->dpriority;
           }
+          
+          //Removing element in between or last
           else
           {
-            //printf("List not empty %s\n", lock->holder->name);
-            //if (list_size(&lock->holder->donation_received_from) >=2)
+            temp = lock->holder->donation_received_from;
+            while(temp->next!=head)
+            {
+              temp = temp->next;
+            };
             
-            check = list_entry (list_back(&lock->holder->donation_received_from), struct donation, delem);
-            lock->holder->priority = check->dpriority;
-            //printf("After else\n");
+            temp->next = head->next;
+            lock->holder->priority = lock->holder->donation_received_from->dpriority;
+            lock->holder->flag_donation_received = 1;          
           }
           break;
-          //printf("\nList Size After %d\n",list_size(&lock->holder->donation_received_from));        
-          //list_remove(&lock->holder->delem);
-          /*Need to remove lock->holder from donated_to_threads of all threads in waiters list for lock*/
         }
-        
-      }
-      
-      
-      
-      //struct thread *t = list_entry(list_pop_back (&lock->holder->donation_received_from_threads),struct thread, elem);
-      //list_pop_back (&t->donated_to_threads);
-      intr_set_level (old_level);
+        else
+          head = head->next;
+      };
     }
+    //struct thread *t = list_entry(list_pop_back (&lock->holder->donation_received_from_threads),struct thread, elem);
+    //list_pop_back (&t->donated_to_threads);
+    intr_set_level (old_level);
   }
+  
   lock->holder = NULL;
   sema_up (&lock->semaphore);
 }
