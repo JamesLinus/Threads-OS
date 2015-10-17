@@ -101,7 +101,8 @@ struct thread
     int intermediate_priority[8];       /*Intermediate priority when donation is received*/
     int flag_donation_received;         /*Flag is set when donation is received*/
     
-    struct list donated_to_threads;              /*List of threads to which priority has been donated*/
+    struct thread *donated_to_thread;              /*List of threads to which priority has been donated*/
+    struct lock *donated_for_lock;
     //struct list donation_received_from_threads;  /*List of threads from whom priority donation has been received*/
     //struct lock *plock;                           /*Reference of lock for which priority donation has been received*/
     struct list donation_received_from;                /*List of donations received*/
@@ -119,13 +120,12 @@ struct thread
 struct donation
 {
   struct lock *dlock;
-  struct thread *dthread;
   int dpriority;
   
   struct list_elem delem;
 };
 
-void priority_donate(struct thread *, struct donation *);
+void priority_donate(struct thread *, struct donation *, struct lock *);
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.

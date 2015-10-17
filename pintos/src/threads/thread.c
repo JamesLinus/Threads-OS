@@ -320,13 +320,16 @@ thread_yield (void)
   ASSERT (!intr_context ());
 
   old_level = intr_disable ();
-  if (cur != idle_thread) 
+  if (cur != idle_thread && !list_empty (&ready_list)) 
   {
     //list_push_back (&ready_list, &cur->elem);
     list_insert_ordered(&ready_list, &cur->elem,higher_priority,NULL);
   }
-  cur->status = THREAD_READY;
-  schedule ();
+  if (!list_empty (&ready_list))
+  {
+    cur->status = THREAD_READY;
+    schedule ();
+  }
   intr_set_level (old_level);
 }
 
@@ -510,7 +513,9 @@ init_thread (struct thread *t, const char *name, int priority)
   t->base_priority = priority;
   t->flag_donation_received = 0;
   
-  list_init (&t->donated_to_threads);
+  t->donated_to_thread = NULL;
+  t->donated_for_lock = NULL;
+  //list_init (&t->donated_to_threads);
   //list_init (&t->donation_received_from_threads);
   list_init (&t->donation_received_from);
   
