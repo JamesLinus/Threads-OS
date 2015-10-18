@@ -11,6 +11,8 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "fixed_point.h"
+#include "devices/timer.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -71,6 +73,9 @@ static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 
+/*Advanced Scheduler*/
+static int load_avg;
+
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
    general and it is possible in this case only because loader.S
@@ -98,6 +103,9 @@ thread_init (void)
   init_thread (initial_thread, "main", PRI_DEFAULT);
   initial_thread->status = THREAD_RUNNING;
   initial_thread->tid = allocate_tid ();
+  
+  /*Advanced Scheduler*/
+  load_avg = 0;
 }
 
 /* Starts preemptive thread scheduling by enabling interrupts.
@@ -134,6 +142,15 @@ thread_tick (void)
   else
     kernel_ticks++;
 
+  /*Advanced Scheduler*/
+  if (thread_mlfqs)
+  {
+    if (timer_ticks () % TIMER_FREQ == 0)
+    {
+      calculate_load_avg();
+    }
+  }
+  
   /* Enforce preemption. */
   if (++thread_ticks >= TIME_SLICE)
     intr_yield_on_return ();
@@ -375,9 +392,7 @@ thread_set_priority (int new_priority)
     t->base_priority = new_priority;
     t->priority = new_priority;
   }
-  
 
-  
   if (!list_empty (&ready_list))
   {
     if (t->priority < (list_entry(list_front(&ready_list), struct thread, elem))->priority)
@@ -398,6 +413,8 @@ void
 thread_set_nice (int nice UNUSED) 
 {
   /* Not yet implemented. */
+  struct thread *t = thread_current();
+  t->nice = nice;
 }
 
 /* Returns the current thread's nice value. */
@@ -405,7 +422,7 @@ int
 thread_get_nice (void) 
 {
   /* Not yet implemented. */
-  return 0;
+  return thread_current()->nice;
 }
 
 /* Returns 100 times the system load average. */
@@ -413,7 +430,7 @@ int
 thread_get_load_avg (void) 
 {
   /* Not yet implemented. */
-  return 0;
+  return TO_INT_NEAR(100 * load_avg);
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
@@ -421,7 +438,7 @@ int
 thread_get_recent_cpu (void) 
 {
   /* Not yet implemented. */
-  return 0;
+  return TO_INT_NEAR(100 * thread_current()->recent_cpu);
 }
 
 /* Idle thread.  Executes when no other thread is ready to run.
@@ -641,3 +658,21 @@ allocate_tid (void)
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
+
+/*Advanced Scheduler*/
+int ready_size()
+{
+  if (thread_current() == idle_thread)
+    return list_size(&ready_list);
+  else
+        return (list_size(&ready_list)+1);
+}
+
+void calculate_load_avg()
+{
+  //load_avg = (59/60)*load_avg + (1/60)*ready_threads.
+  load_avg = (MUL_X_Y(TO_FIXED(59) / 60, load_avg) + MUL_X_N(DIV_X_N(TO_FIXED(1),60),(ready_size())));
+  // load_avg=FLOAT_MULTI(load_avg,FLOAT_DIV_INT(INT_TO_FLOAT(59),60))+FLOAT_MULTI_INT(count_ready_threads(),FLOAT_DIV_INT(INT_TO_FLOAT(1),60));
+}
+
+

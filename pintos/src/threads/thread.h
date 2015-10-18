@@ -103,10 +103,11 @@ struct thread
     
     struct thread *donated_to_thread;              /*List of threads to which priority has been donated*/
     struct lock *donated_for_lock;
-    //struct list donation_received_from_threads;  /*List of threads from whom priority donation has been received*/
-    //struct lock *plock;                           /*Reference of lock for which priority donation has been received*/
-    //struct list donation_received_from;                /*List of donations received*/
     struct donation *donation_received_from;
+    
+    /*Advanced Scheduler*/
+    int recent_cpu;
+    int nice;
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
@@ -164,5 +165,9 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
+
+/*Advanced Scheduler*/
+void calculate_load_avg(void);
+int ready_size(void);
 
 #endif /* threads/thread.h */
