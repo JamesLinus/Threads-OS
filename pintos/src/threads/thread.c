@@ -74,7 +74,7 @@ void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 
 /*Advanced Scheduler*/
-static int load_avg;
+static int64_t load_avg;
 
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
@@ -145,9 +145,18 @@ thread_tick (void)
   /*Advanced Scheduler*/
   if (thread_mlfqs)
   {
+    if (t!= idle_thread)
+      t->recent_cpu = ADD_X_N(t->recent_cpu,1);
+    
     if (timer_ticks () % TIMER_FREQ == 0)
     {
       calculate_load_avg();
+      thread_foreach(calculate_recent_cpu, NULL);
+    }
+    
+    if (timer_ticks() % 4 == 0)
+    {
+      thread_foreach(calculate_priority, NULL);
     }
   }
   
@@ -415,6 +424,7 @@ thread_set_nice (int nice UNUSED)
   /* Not yet implemented. */
   struct thread *t = thread_current();
   t->nice = nice;
+  calculate_priority(t, NULL);
 }
 
 /* Returns the current thread's nice value. */
@@ -533,9 +543,22 @@ init_thread (struct thread *t, const char *name, int priority)
   t->donated_to_thread = NULL;
   t->donated_for_lock = NULL;
   t->donation_received_from = NULL;
-  //list_init (&t->donated_to_threads);
-  //list_init (&t->donation_received_from_threads);
-  //list_init (&t->donation_received_from);
+
+  /*Advanced Scheduler*/
+  if (thread_mlfqs)
+  {
+    if (t == initial_thread)
+    {
+      t->nice = 0;
+      t->recent_cpu = 0;
+    }
+    else
+    {
+      t->nice = running_thread()->nice;
+      t->recent_cpu = running_thread()->recent_cpu;
+    }
+    calculate_priority(t, NULL);
+  }
   
   
   t->magic = THREAD_MAGIC;
@@ -670,9 +693,34 @@ int ready_size()
 
 void calculate_load_avg()
 {
-  //load_avg = (59/60)*load_avg + (1/60)*ready_threads.
-  load_avg = (MUL_X_Y(TO_FIXED(59) / 60, load_avg) + MUL_X_N(DIV_X_N(TO_FIXED(1),60),(ready_size())));
-  // load_avg=FLOAT_MULTI(load_avg,FLOAT_DIV_INT(INT_TO_FLOAT(59),60))+FLOAT_MULTI_INT(count_ready_threads(),FLOAT_DIV_INT(INT_TO_FLOAT(1),60));
+  load_avg = (MUL_X_Y(TO_FIXED(59)/60, load_avg) + MUL_X_N(DIV_X_N(TO_FIXED(1),60),(ready_size())));
 }
+
+void calculate_recent_cpu(struct thread *t, void *aux UNUSED)
+{
+  //t->recent_cpu = ADD_X_N(MUL_X_Y(DIV_X_Y(2 * load_avg, ADD_X_N(MUL_X_N(load_avg,2), 1)), t->recent_cpu), t->nice);
+  //t->recent_cpu = ADD_X_N(MUL_X_Y(DIV_X_Y(2 * load_avg, ADD_X_N(2 * load_avg, 1)), t->recent_cpu), t->nice);
+  t->recent_cpu = ADD_X_N(MUL_X_Y(DIV_X_Y(MUL_X_N(load_avg,2),ADD_X_N(MUL_X_N(load_avg,2),1)),t->recent_cpu),t->nice);
+}
+
+
+void calculate_priority(struct thread *t, void *aux UNUSED)
+{
+  t->priority = PRI_MAX - TO_INT_NEAR(t->recent_cpu / 4) - t->nice * 2;
+  if (t->priority > PRI_MAX)
+    t->priority = PRI_MAX;
+  else if (t->priority < PRI_MIN)
+    t->priority = PRI_MIN;
+}
+
+
+
+
+
+
+
+
+
+
 
 

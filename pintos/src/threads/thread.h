@@ -106,7 +106,7 @@ struct thread
     struct donation *donation_received_from;
     
     /*Advanced Scheduler*/
-    int recent_cpu;
+    int64_t recent_cpu;
     int nice;
 
 #ifdef USERPROG
@@ -167,7 +167,9 @@ int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
 /*Advanced Scheduler*/
-void calculate_load_avg(void);
 int ready_size(void);
+void calculate_load_avg(void);
+void calculate_recent_cpu(struct thread *t, void *aux);
+void calculate_priority(struct thread *t, void *aux);
 
 #endif /* threads/thread.h */
