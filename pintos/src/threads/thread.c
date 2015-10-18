@@ -151,12 +151,14 @@ thread_tick (void)
     if (timer_ticks () % TIMER_FREQ == 0)
     {
       calculate_load_avg();
+      
       thread_foreach(calculate_recent_cpu, NULL);
     }
     
     if (timer_ticks() % 4 == 0)
     {
       thread_foreach(calculate_priority, NULL);
+      list_sort(&ready_list, higher_priority, NULL);
     }
   }
   
@@ -274,9 +276,20 @@ thread_unblock (struct thread *t)
   //list_push_back (&ready_list, &t->elem);
   list_insert_ordered(&ready_list, &t->elem,higher_priority,NULL);
   t->status = THREAD_READY;
-  if (t->priority > (running_thread())->priority && running_thread() != idle_thread) 
+  if (t->priority > (running_thread())->priority && running_thread() != idle_thread) //!thread_mlfqs
   {
-    thread_yield();
+    //if (!intr_context())//(!thread_mlfqs)
+      //thread_yield();
+    //else
+      //intr_yield_on_return ();
+    if (!thread_mlfqs)
+      thread_yield();
+    else
+      if (intr_context())
+          intr_yield_on_return ();
+      else
+        thread_yield();
+      
   }
   intr_set_level (old_level);
 }
@@ -382,6 +395,8 @@ thread_set_priority (int new_priority)
 {
   struct thread *t = thread_current();
   //enum intr_level old_level = intr_disable ();
+  if (thread_mlfqs)
+    return;
   if (t->flag_donation_received == 1)
   {
     if (new_priority > t->priority)
@@ -424,6 +439,7 @@ thread_set_nice (int nice UNUSED)
   /* Not yet implemented. */
   struct thread *t = thread_current();
   t->nice = nice;
+  //calculate_recent_cpu(t, NULL);
   calculate_priority(t, NULL);
 }
 
@@ -529,7 +545,7 @@ init_thread (struct thread *t, const char *name, int priority)
   ASSERT (t != NULL);
   ASSERT (PRI_MIN <= priority && priority <= PRI_MAX);
   ASSERT (name != NULL);
-
+  
   memset (t, 0, sizeof *t);
   t->status = THREAD_BLOCKED;
   strlcpy (t->name, name, sizeof t->name);
@@ -543,7 +559,8 @@ init_thread (struct thread *t, const char *name, int priority)
   t->donated_to_thread = NULL;
   t->donated_for_lock = NULL;
   t->donation_received_from = NULL;
-
+  
+  
   /*Advanced Scheduler*/
   if (thread_mlfqs)
   {
@@ -590,7 +607,7 @@ next_thread_to_run (void)
     return idle_thread;
   else
   {
-    //list_sort(&ready_list, higher_priority, NULL);
+    list_sort(&ready_list, higher_priority, NULL);
     return list_entry (list_pop_front (&ready_list), struct thread, elem);
   }
 }
@@ -683,6 +700,8 @@ allocate_tid (void)
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
 
 /*Advanced Scheduler*/
+
+//Function returns the number of ready threads including the running thread. Excep in case of idle thread
 int ready_size()
 {
   if (thread_current() == idle_thread)
@@ -691,19 +710,19 @@ int ready_size()
         return (list_size(&ready_list)+1);
 }
 
+//Calculates system wide load average
 void calculate_load_avg()
 {
   load_avg = (MUL_X_Y(TO_FIXED(59)/60, load_avg) + MUL_X_N(DIV_X_N(TO_FIXED(1),60),(ready_size())));
 }
 
+//Calculates recent_cpu for thread
 void calculate_recent_cpu(struct thread *t, void *aux UNUSED)
 {
-  //t->recent_cpu = ADD_X_N(MUL_X_Y(DIV_X_Y(2 * load_avg, ADD_X_N(MUL_X_N(load_avg,2), 1)), t->recent_cpu), t->nice);
-  //t->recent_cpu = ADD_X_N(MUL_X_Y(DIV_X_Y(2 * load_avg, ADD_X_N(2 * load_avg, 1)), t->recent_cpu), t->nice);
   t->recent_cpu = ADD_X_N(MUL_X_Y(DIV_X_Y(MUL_X_N(load_avg,2),ADD_X_N(MUL_X_N(load_avg,2),1)),t->recent_cpu),t->nice);
 }
 
-
+//Calculates priority of thread
 void calculate_priority(struct thread *t, void *aux UNUSED)
 {
   t->priority = PRI_MAX - TO_INT_NEAR(t->recent_cpu / 4) - t->nice * 2;
