@@ -98,16 +98,15 @@ struct thread
     
     /*Priority Scheduling*/
     int base_priority;                  /*Priority when donation is released*/
-    int intermediate_priority[8];       /*Intermediate priority when donation is received*/
     int flag_donation_received;         /*Flag is set when donation is received*/
     
     struct thread *donated_to_thread;              /*List of threads to which priority has been donated*/
-    struct lock *donated_for_lock;
-    struct donation *donation_received_from;
+    struct lock *donated_for_lock;                /*Reference to the lock for which donation has been done*/
+    struct donation *donation_received_from;      /*Linked list for donations received*/
     
     /*Advanced Scheduler*/
-    int64_t recent_cpu;
-    int nice;
+    int64_t recent_cpu;                           /*Recent CPU for thread*/
+    int nice;                                      /*Nice value of thread*/
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
@@ -118,17 +117,19 @@ struct thread
     unsigned magic;                     /* Detects stack overflow. */
   };
 
-/*Structure to store details donation received: thread, lock and priority */
+/*Structure to store details donation received:lock and priority */
 struct donation
 {
-  struct lock *dlock;
-  int dpriority;
-  
-  struct donation *next;
-  //struct list_elem delem;
+  struct lock *dlock; /*Reference of lock for which donation has been done*/
+  int dpriority;      /*Hoghest priority of all the donations received for a lock*/
+  struct donation *next;    /*Reference to next donation received for same thread*/
 };
 
+//Function to donate priority in chain/ recursively
 void priority_donate(struct thread *, struct donation *, struct lock *);
+
+//Function to release donation received
+void donation_release(struct lock *lock);
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
@@ -167,9 +168,16 @@ int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
 /*Advanced Scheduler*/
+//Calculate number of ready threads
 int ready_size(void);
+
+//Calculate load average of system
 void calculate_load_avg(void);
+
+//Calculate recent cpu for thread
 void calculate_recent_cpu(struct thread *t, void *aux);
+
+//Calculate priority of thread
 void calculate_priority(struct thread *t, void *aux);
 
 #endif /* threads/thread.h */

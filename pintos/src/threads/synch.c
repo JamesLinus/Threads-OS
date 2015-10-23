@@ -152,7 +152,6 @@ sema_up (struct semaphore *sema)
     thread_unblock (list_entry (list_pop_front (&sema->waiters),
                                 struct thread, elem));
   }
-  //sema->value++;
   intr_set_level (old_level);
 }
 
@@ -232,18 +231,20 @@ lock_acquire (struct lock *lock)
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
   
-  enum intr_level old_level = intr_disable ();
+  //enum intr_level old_level = intr_disable ();
   
+  //Check if the lock is already being held by another thread
   if (lock->holder != NULL)
   {
+    //Check if the current threads priority is greater than the thread holding the lock
     if (lock->holder->priority < thread_current()->priority)
     {
+      //Initialize the donation structure
       struct donation d;
       d.dlock = lock;
       d.dpriority = thread_current()->priority;
       d.next = NULL;
-      
-      //lock->holder->plock = lock;
+      //Donate priority
       priority_donate(lock->holder, &d, lock);
     }
   }
@@ -252,12 +253,15 @@ lock_acquire (struct lock *lock)
   
 
   lock->holder = thread_current ();
+  
+  //Check if the thread who had donated its priority for this lock, has already obtained this lock
+  //Then remove the reference for donation since the thread has already got the lock
   if (lock->holder->donated_for_lock == lock)
   {
     lock->holder->donated_for_lock = NULL;
     lock->holder->donated_to_thread = NULL;
   }
-  intr_set_level (old_level);
+  //intr_set_level (old_level);
 }
 
 /*Donate priority to thread holding the lock with lower priority*/
@@ -360,6 +364,7 @@ lock_try_acquire (struct lock *lock)
   return success;
 }
 
+
 /* Releases LOCK, which must be owned by the current thread.
 
    An interrupt handler cannot acquire a lock, so it does not
@@ -371,14 +376,25 @@ lock_release (struct lock *lock)
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
   
+  donation_release(lock);
+  
+  
+  lock->holder = NULL;
+  sema_up (&lock->semaphore);
+}
+
+/* Releases donation received for current lock*/
+void
+donation_release(struct lock *lock)
+{
   if (lock->holder->flag_donation_received == 1)
   {
     
-    enum intr_level old_level = intr_disable ();
-    //struct list_elem *e;
+    //enum intr_level old_level = intr_disable ();
     struct donation *head, *temp;
     head = lock->holder->donation_received_from;
     
+    //If there is only one entry for donation and it is for the lock being released.
     if (head->next == NULL && head->dlock == lock)
     {
       lock->holder->donation_received_from = NULL;
@@ -392,8 +408,6 @@ lock_release (struct lock *lock)
         if (head->dlock == lock)
         {
           //Remove donation received from
-          //temp = head;
-          //head = head->next;
           
           //Removing first element from list
           if (head == lock->holder->donation_received_from)
@@ -411,6 +425,7 @@ lock_release (struct lock *lock)
               temp = temp->next;
             };
             
+            //Donate higher priority to lock holder
             temp->next = head->next;
             lock->holder->priority = lock->holder->donation_received_from->dpriority;
             lock->holder->flag_donation_received = 1;          
@@ -418,18 +433,15 @@ lock_release (struct lock *lock)
           break;
         }
         else
-          head = head->next;
+        head = head->next;
       };
     }
     //struct thread *t = list_entry(list_pop_back (&lock->holder->donation_received_from_threads),struct thread, elem);
     //list_pop_back (&t->donated_to_threads);
-    intr_set_level (old_level);
+    //intr_set_level (old_level);
   }
   
-  lock->holder = NULL;
-  sema_up (&lock->semaphore);
 }
-
 /* Returns true if the current thread holds LOCK, false
    otherwise.  (Note that testing whether some other thread holds
    a lock would be racy.) */

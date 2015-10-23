@@ -107,15 +107,15 @@ void
 timer_sleep (int64_t ticks) 
 {
   ASSERT (intr_get_level () == INTR_ON);
-  //while (timer_elapsed (start) < ticks) 
-  //  thread_yield ();
   
+  //disable interrupt ince shared data is being edited
   enum intr_level old_level = intr_disable (); 
   struct block_sema block_sema;
   sema_init(&(block_sema.sema),0);
   int64_t start = timer_ticks ();
-  block_sema.wakeup_tick= start+ticks;
   
+  //Block thread that needs to sleep
+  block_sema.wakeup_tick= start+ticks;
   list_insert_ordered(&blocked_semas, &(block_sema.elem),wakeup_tick_less,NULL);
   intr_set_level (old_level);
   sema_down(&(block_sema.sema));
@@ -205,6 +205,7 @@ timer_interrupt (struct intr_frame *args UNUSED)
     
     struct block_sema *check = list_entry (e, struct block_sema, elem);
     
+    //Check if the wakup_timer for thread has been reached, then wake up the thread
     if (check->wakeup_tick <= current_ticks)
     {
       enum intr_level old_level = intr_disable ();

@@ -1,7 +1,7 @@
 #ifndef THREAD_FIXED_POINT
 #define THREAD_FIXED_POINT
-/* to implement fixed point in the kernel */
-#define EPS_F 16384
+
+/* Fixed Point Arithmetic*/
 #define TO_FIXED(n) ((n) * 16384)
 #define TO_INT_Z(x)	((x) / 16384)
 #define TO_INT_NEAR(x) ((x)>=0?(((x) + 8192) / 16384) : (((x) - 8192) / 16384))
